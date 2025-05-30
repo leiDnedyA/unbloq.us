@@ -2,6 +2,11 @@ const http = require('http');
 const url = require('url');
 const cheerio = require('cheerio');
 const puppeteer = require('puppeteer');
+const {
+  connectRedis,
+  cacheSet,
+  cacheGet
+} = require('./src/cache.js');
 
 function getArchiveLinkFromHtml(html, originalUrl) {
   if (html.includes('No results')) {
@@ -26,6 +31,15 @@ function buildArchiveSubmissionLink(url) {
 }
 
 async function getArchiveLink(url) {
+  await connectRedis();
+
+  // If the result is cached, fetch it
+  const cachedArchive = await cacheGet(url);
+  if (cachedArchive) {
+    return cachedArchive;
+  }
+
+  // Otherwise, scrape it
   const viewport = {
     deviceScaleFactor: 1,
     hasTouch: false,
@@ -48,6 +62,11 @@ async function getArchiveLink(url) {
   await browser.close();
 
   const archiveLink = getArchiveLinkFromHtml(html, url);
+
+  if (archiveLink) {
+    // cache the result
+    await cacheSet(archiveLink);
+  }
 
   return archiveLink ? archiveLink : null;
 };
@@ -75,7 +94,7 @@ const server = http.createServer(async (req, res) => {
       const submissionLink = buildArchiveSubmissionLink(targetUrl);
       console.log(` - generating archive: ${submissionLink}`);
       res.writeHead(201, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ url: submissionLink}));
+      res.end(JSON.stringify({ url: submissionLink }));
     }
   } catch (err) {
     console.error('Error:', err);
