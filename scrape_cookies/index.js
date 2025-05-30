@@ -102,7 +102,7 @@ async function getArchiveLink(url) {
 const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
 
-  console.log(req.url);
+  console.log(`\n[${new Date().toISOString()}] -- `, req.url);
   if (parsedUrl.pathname !== '/archive') {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
