@@ -20,7 +20,7 @@ function getArchiveLinkFromHtml(html, originalUrl) {
     .get();
 
   const archiveLinkIndex = hrefs
-    .findIndex((href) => href && href.includes(originalUrl)) - 1;
+    .findLastIndex((href) => href && href.includes(originalUrl)) - 1;
 
   const archiveLink = archiveLinkIndex > 0 && hrefs[archiveLinkIndex];
   return archiveLink;
@@ -60,11 +60,9 @@ async function getArchiveLink(url) {
   });
   const page = (await browser.pages())?.[0] || await browser.newPage();
   await page.goto(`https://archive.ph/${url}`, { waitUntil: 'networkidle2' });
-  await new Promise((res) => { setTimeout(() => { res() }, 500) });
+  await new Promise((res) => { setTimeout(() => { res() }, 200) });
 
   const html = await page.content();
-  await new Promise((res) => { setTimeout(() => { res() }, 500) });
-  await new Promise((res) => { setTimeout(() => { res() }, 500) });
   await browser.close();
 
   const archiveLink = getArchiveLinkFromHtml(html, url);
@@ -116,4 +114,6 @@ server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/archive?url=<your-url>`);
 });
 
-// getArchiveLink('https://www.theatlantic.com/science/archive/2025/05/adam-riess-hubble-tension/682980/').then(console.log)
+// getArchiveLink('https://www.chronicle.com/article/the-surveilled-student').then(console.log)
+// getArchiveLink('https://www.bloomberg.com/news/articles/2025-04-28/delta-routes-new-airbus-plane-to-tokyo-to-sidestep-trump-tariffs').then(console.log)
+// getArchiveLink('https://www.nytimes.com/2025/05/29/well/maha-report-citations.html').then(console.log)
