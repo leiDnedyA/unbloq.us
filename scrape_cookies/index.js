@@ -4,6 +4,10 @@ const cheerio = require('cheerio');
 const puppeteer = require('puppeteer');
 
 function getArchiveLinkFromHtml(html, originalUrl) {
+  if (html.includes('No results')) {
+    return null;
+  }
+
   const $ = cheerio.load(html);
 
   const hrefs = $('a')
@@ -15,6 +19,10 @@ function getArchiveLinkFromHtml(html, originalUrl) {
 
   const archiveLink = archiveLinkIndex > 0 && hrefs[archiveLinkIndex];
   return archiveLink;
+}
+
+function buildArchiveSubmissionLink(url) {
+  return `https://archive.ph/submit/?url=${encodeURIComponent(url)}`;
 }
 
 async function getArchiveLink(url) {
@@ -35,45 +43,19 @@ async function getArchiveLink(url) {
   await new Promise((res) => { setTimeout(() => { res() }, 500) });
 
   const html = await page.content();
+  await new Promise((res) => { setTimeout(() => { res() }, 500) });
+  await new Promise((res) => { setTimeout(() => { res() }, 500) });
+  await browser.close();
 
   const archiveLink = getArchiveLinkFromHtml(html, url);
-
-  await browser.close();
 
   return archiveLink ? archiveLink : null;
 };
 
-exports.handler = async (event) => {
-  const queryParams = event.queryStringParameters || {};
-  const url = queryParams.url;
-  if (!url) {
-    return {
-      statusCode: 404,
-      body: JSON.stringify({ error: 'Not found.' })
-    }
-  }
-
-  console.log(`Finding archive for URL: ${url}...`)
-  const archiveLink = await getArchiveLink(url);
-  if (archiveLink) {
-    console.log('\t Found! ' + archiveLink);
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ url: archiveLink })
-    }
-  }
-
-  console.log('\t Not found.')
-  return {
-    statusCode: 500,
-    body: { error: "Failed." }
-  }
-}
-
 const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
 
-  console.log(parsedUrl);
+  console.log(req.url);
   if (parsedUrl.pathname !== '/archive') {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -81,21 +63,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   const targetUrl = parsedUrl.query.url;
-
-  if (!targetUrl.path) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Missing `url` query parameter.' }));
-    return;
-  }
+  console.log(`targetUrl: ${targetUrl}`);
 
   try {
     const archiveLink = await getArchiveLink(targetUrl);
     if (archiveLink) {
+      console.log(` - archive: ${archiveLink}`);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url: archiveLink }));
     } else {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Archive link not found.' }));
+      const submissionLink = buildArchiveSubmissionLink(targetUrl);
+      console.log(` - generating archive: ${submissionLink}`);
+      res.writeHead(201, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ url: submissionLink}));
     }
   } catch (err) {
     console.error('Error:', err);
