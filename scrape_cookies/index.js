@@ -32,11 +32,12 @@ function buildArchiveSubmissionLink(url) {
 
 async function getArchiveLink(url) {
   if (!url) return null;
+  const urlEncodedUrl = encodeURIComponent(url)
 
   await connectRedis();
 
   // If the result is cached, fetch it
-  const cachedArchive = await cacheGet(url);
+  const cachedArchive = await cacheGet(`archive:${urlEncodedUrl}`);
   if (cachedArchive) {
     console.log(`cache hit -> ${url}: ${cachedArchive}`)
     return cachedArchive;
@@ -71,7 +72,7 @@ async function getArchiveLink(url) {
   if (archiveLink) {
     // cache the result
     console.log(`caching ${url}: ${archiveLink}`);
-    await cacheSet(archiveLink);
+    await cacheSet(`archive:${urlEncodedUrl}`, archiveLink, 3600);
   }
 
   return archiveLink ? archiveLink : null;
