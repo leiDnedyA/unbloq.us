@@ -53,14 +53,17 @@ exports.handler = async (event) => {
     }
   }
 
+  console.log(`Finding archive for URL: ${url}...`)
   const archiveLink = await getArchiveLink(url);
   if (archiveLink) {
+    console.log('\t Found! ' + archiveLink);
     return {
       statusCode: 200,
       body: JSON.stringify({ url: archiveLink })
     }
   }
 
+  console.log('\t Not found.')
   return {
     statusCode: 500,
     body: { error: "Failed." }
@@ -70,6 +73,7 @@ exports.handler = async (event) => {
 const server = http.createServer(async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
 
+  console.log(parsedUrl);
   if (parsedUrl.pathname !== '/archive') {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
@@ -78,7 +82,7 @@ const server = http.createServer(async (req, res) => {
 
   const targetUrl = parsedUrl.query.url;
 
-  if (!targetUrl) {
+  if (!targetUrl.path) {
     res.writeHead(400, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Missing `url` query parameter.' }));
     return;
@@ -106,4 +110,4 @@ server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/archive?url=<your-url>`);
 });
 
-// getArchiveLink('https://www.bloomberg.com/news/articles/2025-04-28/delta-routes-new-airbus-plane-to-tokyo-to-sidestep-trump-tariffs').then(console.log)
+// getArchiveLink('https://www.theatlantic.com/science/archive/2025/05/adam-riess-hubble-tension/682980/').then(console.log)
