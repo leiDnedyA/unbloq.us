@@ -14,7 +14,7 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   if (!resolvedUrl || resolvedUrl === '/') {
     return {
       redirect: {
-        destination: 'https://aydendiel.dev/',
+        destination: 'https://github.com/leiDnedyA/unbloq.us',
         permanent: false
       }
     }

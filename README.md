@@ -1,40 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# Unbloq.us
+This is a little wrapper on top of [archive.ph](https://archive.ph/) to make finding and 
+creating archived pages as easy as adding a funny domain name before the article URL!
 
-## Getting Started
+Just replace
+```https://article.com/some-article-title/whatever-else-is-in-a-url```
 
-First, run the development server:
+with
+```unbloq.us/https://article.com/some-article-title/whatever-else-is-in-a-url```
 
+and you will be redirected to an archive of your article!
+
+## Setup
+Here's how you set up unbloq.us locally. First, **install npm packages**:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm i
+cd scrape_cookies && npm i
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then, you need to add a single environment variable to `.env.local`:
+```
+SCRAPE_URL=<whatever URL to hit for the scraper>
+```
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+## Running the server
+There are two parts to this server-- the main server that runs on nextjs, 
+and the node http server that does the web scraping via puppeteer. The nextjs 
+server is basically just a proxy to the scraper. I wanted free webhosting, easy deployment, 
+and reasonable security (aka not opening my home network to the internet), so 
+I host the nextjs part on vercel and self-host the scraper. I plug the scraper 
+into nextjs with a 
+[cloudflare tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/).
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
-
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
-
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+To run the scraper locally, simply run this:
+```bash
+cd scrape_cookies && node index.js
+```
