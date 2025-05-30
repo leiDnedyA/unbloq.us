@@ -12,9 +12,9 @@
   "dependencies": {
     "cheerio": "^1.0.0",
     "chrome-aws-lambda": "^10.1.0",
-    "puppeteer": "^24.9.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-recaptcha": "^3.6.8",
-    "puppeteer-extra-plugin-stealth": "^2.11.2"
+    "puppeteer": "^24.9.0"
+  },
+  "devDependencies": {
+    "@sparticuz/chromium": "^133.0.0"
   }
 }

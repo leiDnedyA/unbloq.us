@@ -1,6 +1,7 @@
+const http = require('http');
+const url = require('url');
 const cheerio = require('cheerio');
-const chromium = require('chrome-aws-lambda');
-const puppeteer = chromium.puppeteer;
+const puppeteer = require('puppeteer');
 
 function getArchiveLinkFromHtml(html, originalUrl) {
   const $ = cheerio.load(html);
@@ -17,12 +18,20 @@ function getArchiveLinkFromHtml(html, originalUrl) {
 }
 
 async function getArchiveLink(url) {
+  const viewport = {
+    deviceScaleFactor: 1,
+    hasTouch: false,
+    height: 1080,
+    isLandscape: true,
+    isMobile: false,
+    width: 1920,
+  };
   const browser = await puppeteer.launch({
+    defaultViewport: viewport,
     headless: false,
-    args: ['--incognito']
   });
   const page = (await browser.pages())?.[0] || await browser.newPage();
-  await page.goto(url, { waitUntil: 'networkidle2' });
+  await page.goto(`https://archive.ph/${url}`, { waitUntil: 'networkidle2' });
   await new Promise((res) => { setTimeout(() => { res() }, 500) });
 
   const html = await page.content();
@@ -57,3 +66,44 @@ exports.handler = async (event) => {
     body: { error: "Failed." }
   }
 }
+
+const server = http.createServer(async (req, res) => {
+  const parsedUrl = url.parse(req.url, true);
+
+  if (parsedUrl.pathname !== '/archive') {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+    return;
+  }
+
+  const targetUrl = parsedUrl.query.url;
+
+  if (!targetUrl) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Missing `url` query parameter.' }));
+    return;
+  }
+
+  try {
+    const archiveLink = await getArchiveLink(targetUrl);
+    if (archiveLink) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ url: archiveLink }));
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Archive link not found.' }));
+    }
+  } catch (err) {
+    console.error('Error:', err);
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Internal server error.' }));
+  }
+});
+
+
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}/archive?url=<your-url>`);
+});
+
+// getArchiveLink('https://www.bloomberg.com/news/articles/2025-04-28/delta-routes-new-airbus-plane-to-tokyo-to-sidestep-trump-tariffs').then(console.log)
