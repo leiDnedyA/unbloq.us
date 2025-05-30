@@ -1,31 +1,6 @@
 import { GetServerSideProps } from 'next';
-import * as cheerio from 'cheerio';
 
-async function fetchArchive(targetUrl: string) {
-  const response = await fetch(`https://archive.ph/${targetUrl}`, {
-    "headers": {
-      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-      "accept-language": "en-US,en;q=0.9",
-      "cache-control": "no-cache",
-      "pragma": "no-cache",
-      "priority": "u=0, i",
-      "sec-ch-ua": "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": "\"Linux\"",
-      "sec-fetch-dest": "document",
-      "sec-fetch-mode": "navigate",
-      "sec-fetch-site": "same-origin",
-      "sec-fetch-user": "?1",
-      "upgrade-insecure-requests": "1",
-      "cookie": "cf_clearance=f810d6bc666a77baba0558ec65a612fba41ba336-1748569611-PIILZZJJ",
-      "Referer": "https://archive.ph/",
-      "Referrer-Policy": "strict-origin-when-cross-origin"
-    },
-    "body": null,
-    "method": "GET"
-  });
-  return await response.text();
-}
+const SCRAPE_URL = process.env.SCRAPE_URL;
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
   const resolvedUrl = context?.resolvedUrl;
@@ -56,45 +31,24 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     targetUrl = 'https://' + targetUrl;
   }
 
-  try {
+  const data = await (await fetch(`${SCRAPE_URL}/archive?url=${targetUrl}`)).json();
 
-    const html = await fetchArchive(targetUrl);
-    const $ = cheerio.load(html);
+  console.log(data);
 
-    const hrefs = $('a')
-      .map((_, el) => $(el).attr('href'))
-      .get();
-
-    console.log({ hrefs })
-
-    const archiveLinkIndex = hrefs
-      .findIndex((href) => href && href.includes(targetUrl)) - 1;
-
-    const archiveLink = archiveLinkIndex > 0 && hrefs[archiveLinkIndex];
-
-    console.log({ archiveLink })
-
-    if (archiveLink) {
-      return {
-        redirect: {
-          destination: archiveLink,
-          permanent: false,
-        },
-      };
+  if (data.url) {
+    return {
+      redirect: {
+        destination: data.url,
+        permanent: false
+      }
     }
-
-    return {
-      props: {
-        error: 'Archive link not found.',
-      },
-    };
-  } catch (error) {
-    return {
-      props: {
-        error: 'Error fetching archive.',
-      },
-    };
   }
+
+  return {
+    props: {
+      error: 'Error fetching archive.',
+    },
+  };
 };
 
 export default function RedirectPage({ error }: { error?: string }) {
