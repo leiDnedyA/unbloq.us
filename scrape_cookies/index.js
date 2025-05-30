@@ -8,21 +8,44 @@ const {
   cacheGet
 } = require('./src/cache.js');
 
-function getArchiveLinkFromHtml(html, originalUrl) {
-  if (html.includes('No results')) {
+async function getArchiveLinkFromHtml(html, originalUrl) {
+  if (html.includes('No results') || !originalUrl) {
     return null;
   }
 
   const $ = cheerio.load(html);
 
-  const hrefs = $('a')
-    .map((_, el) => $(el).attr('href'))
-    .get();
+  let archiveLink;
 
-  const archiveLinkIndex = hrefs
-    .findLastIndex((href) => href && href.includes(originalUrl)) - 1;
+  if (!archiveLink) {
+    const anchorsWithSingleImg = $('a').filter(function() {
+      const children = $(this).children();
+      for (let i = 0; i < children.length; i++) {
+        if (children.get(i)?.tagName === 'img') {
+          return true;
+        }
+      }
+      return false;
+    });
+    const hrefs = anchorsWithSingleImg
+      .map((_, el) => $(el).attr('href'))
+      .get();
 
-  const archiveLink = archiveLinkIndex > 0 && hrefs[archiveLinkIndex];
+    archiveLink = hrefs?.[0];
+  }
+
+  if (!archiveLink) {
+    // if the page title doesn't exist or can't be found, fallback like this
+    const hrefs = $('a')
+      .map((_, el) => $(el).attr('href'))
+      .get();
+
+    const archiveLinkIndex = hrefs
+      .findLastIndex((href) => href && href.includes(originalUrl)) - 1;
+
+    archiveLink = archiveLinkIndex > 0 && hrefs[archiveLinkIndex];
+  }
+
   return archiveLink;
 }
 
@@ -65,7 +88,7 @@ async function getArchiveLink(url) {
   const html = await page.content();
   await browser.close();
 
-  const archiveLink = getArchiveLinkFromHtml(html, url);
+  const archiveLink = await getArchiveLinkFromHtml(html, url);
 
   if (archiveLink) {
     // cache the result
@@ -114,6 +137,10 @@ server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}/archive?url=<your-url>`);
 });
 
-// getArchiveLink('https://www.chronicle.com/article/the-surveilled-student').then(console.log)
-// getArchiveLink('https://www.bloomberg.com/news/articles/2025-04-28/delta-routes-new-airbus-plane-to-tokyo-to-sidestep-trump-tariffs').then(console.log)
-// getArchiveLink('https://www.nytimes.com/2025/05/29/well/maha-report-citations.html').then(console.log)
+// Tests
+// Promise.all([
+//   getArchiveLink('https://www.theatlantic.com/technology/archive/2025/05/stop-using-x/682931/'),
+//   getArchiveLink('https://www.chronicle.com/article/the-surveilled-student'),
+//   getArchiveLink('https://www.bloomberg.com/news/articles/2025-04-28/delta-routes-new-airbus-plane-to-tokyo-to-sidestep-trump-tariffs'),
+//   getArchiveLink('https://www.nytimes.com/2025/05/29/well/maha-report-citations.html'),
+// ]).then(console.log)
