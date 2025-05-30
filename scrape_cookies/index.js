@@ -31,12 +31,17 @@ function buildArchiveSubmissionLink(url) {
 }
 
 async function getArchiveLink(url) {
+  if (!url) return null;
+
   await connectRedis();
 
   // If the result is cached, fetch it
   const cachedArchive = await cacheGet(url);
   if (cachedArchive) {
+    console.log(`cache hit -> ${url}: ${cachedArchive}`)
     return cachedArchive;
+  } else {
+    console.log(`cache miss for ${url}`);
   }
 
   // Otherwise, scrape it
@@ -65,6 +70,7 @@ async function getArchiveLink(url) {
 
   if (archiveLink) {
     // cache the result
+    console.log(`caching ${url}: ${archiveLink}`);
     await cacheSet(archiveLink);
   }
 
