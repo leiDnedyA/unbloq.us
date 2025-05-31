@@ -21,15 +21,26 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   }
 
   // https:/example.com (only one `/` after protocol)
-  let targetUrl: string | undefined = decodeURIComponent(context.resolvedUrl);
-  targetUrl = targetUrl
-    ?.split(':')
-    ?.[1]
-    ?.slice(1);
+  let targetUrl: string | undefined = decodeURIComponent(context.resolvedUrl)
+    .slice(1); // removes '/' from the beginning
 
-  if (targetUrl) {
+  function removePrefix(prefix: string, str: string) {
+    return str.slice(prefix.length);
+  }
+
+  // Fix weird edge case where `targetUrl` starts with 'http:/' or 'https:/'
+  // instead of https://
+  if (targetUrl.startsWith('http:/') && !targetUrl.startsWith('http://')) {
+    targetUrl = 'http://' + removePrefix('http:/', targetUrl);
+  } else if (targetUrl.startsWith('https:/') && !targetUrl.startsWith('https://')) {
+    targetUrl = 'https://' + removePrefix('https:/', targetUrl);
+  }
+
+  if (targetUrl && !targetUrl.startsWith('https://') && !targetUrl.startsWith('http://')) {
     targetUrl = 'https://' + targetUrl;
   }
+
+  console.log({ targetUrl });
 
   const data = await (await fetch(`${SCRAPE_URL}/archive?url=${targetUrl}`)).json();
 
