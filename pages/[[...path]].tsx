@@ -126,7 +126,7 @@ export default function HomePage({ error, targetUrl }: { error?: string, targetU
   });
   if (error) {
     return (
-      <div style={{ fontFamily: 'sans-serif', padding: 40 }}>
+      <div>
         <h1>Error</h1>
         <p>{error || 'Unknown error occurred.'}</p>
         {targetUrl && <p>
@@ -140,7 +140,7 @@ export default function HomePage({ error, targetUrl }: { error?: string, targetU
       </div>
     );
   }
-  return <div style={{ fontFamily: 'sans-serif', padding: 40 }}>
+  return <div style={{ fontFamily: 'sans-serif' }}>
     <h1>unbloq.us</h1>
     <p>
       A tiny wrapper around <a href="https://archive.today/">https://archive.today/</a> {' '}
