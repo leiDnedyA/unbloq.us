@@ -1,4 +1,5 @@
 import { GetServerSideProps } from 'next';
+import { FormEventHandler, useEffect, useRef, useState } from 'react';
 
 const SCRAPE_URL = process.env.SCRAPE_URL;
 
@@ -12,10 +13,14 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   }
 
   if (!resolvedUrl || resolvedUrl === '/') {
+    return { props: {} };
+  }
+
+  if (resolvedUrl.includes('error.com')) {
     return {
-      redirect: {
-        destination: 'https://github.com/leiDnedyA/unbloq.us',
-        permanent: false
+      props: {
+        error: 'Error fetching archive.',
+        targetUrl: 'https://error.com/'
       }
     }
   }
@@ -40,11 +45,9 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     targetUrl = 'https://' + targetUrl;
   }
 
-  console.log({ targetUrl });
-
   const data = await (await fetch(`${SCRAPE_URL}/archive?url=${targetUrl}`)).json();
 
-  console.log(data);
+  console.log({ ...data, targetUrl });
 
   if (data.url) {
     return {
@@ -58,15 +61,92 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
   return {
     props: {
       error: 'Error fetching archive.',
+      targetUrl
     },
   };
 };
 
-export default function RedirectPage({ error }: { error?: string }) {
+const GotoArchiveForm = () => {
+  const [value, setValue] = useState<string>('');
+  const [submitted, setSubmitted] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (inputRef.current)
+      (inputRef?.current as HTMLInputElement).focus();
+  }, []);
+
+  const handleSubmit: FormEventHandler = (e) => {
+    e.preventDefault();
+    window.location.assign(`${window.location.origin}/${value}`);
+    setSubmitted(true);
+  };
+
+  const handleInputChange: FormEventHandler = (e) => {
+    e.preventDefault();
+    const newValue = (e.target as HTMLInputElement).value as string;
+    setValue(newValue);
+  };
+
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: 40 }}>
-      <h1>Error</h1>
-      <p>{error || 'Unknown error occurred.'}</p>
-    </div>
+    <form onSubmit={handleSubmit}>
+      <div className="wrapper">
+        <label className="label">{'https://unbloq.us/'}</label>
+        <input
+          ref={inputRef}
+          onInput={handleInputChange}
+          value={value}
+          type="text"
+          placeholder="example.com"
+          className="input" />
+      </div>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        width: '100%'
+      }}>
+        <input
+          disabled={!value || submitted}
+          className="submit"
+          type="submit"
+          value="Go to archive"
+        />
+      </div>
+      {submitted &&
+        <p style={{ opacity: .6 }}>
+          Fetching the archive link for {value}. This may take a few seconds.
+        </p>}
+    </form>
   );
+};
+export default function HomePage({ error, targetUrl }: { error?: string, targetUrl?: string | undefined }) {
+  const [windowRef, setWindowRef] = useState<Window | null>(null);
+  useEffect(() => {
+    setWindowRef(window);
+  });
+  if (error) {
+    return (
+      <div style={{ fontFamily: 'sans-serif', padding: 40 }}>
+        <h1>Error</h1>
+        <p>{error || 'Unknown error occurred.'}</p>
+        {targetUrl && <p>
+          <a href={`${windowRef?.location.origin}/${targetUrl}`}>Click here</a> to try again. If the error persists, please open a {' '}
+          <a href={
+            `${process.env.GITHUB_URL}/issues/new?title=${encodeURIComponent(
+              `Unable to create archive for ${targetUrl}`)}`
+          }>GitHub issue</a> or {' '}
+          <a href="mailto:aydendiel@gmail.com">shoot me an email</a>.
+        </p>}
+      </div>
+    );
+  }
+  return <div style={{ fontFamily: 'sans-serif', padding: 40 }}>
+    <h1>unbloq.us</h1>
+    <p>
+      A tiny wrapper around <a href="https://archive.today/">https://archive.today/</a> {' '}
+      to automatically jump to or create an archive of any webpage!
+    </p>
+    <GotoArchiveForm />
+    <p>Give the project a star or make a contribution <a href={process.env.GITHUB_URL}>on GitHub</a>!</p>
+  </div>
 }
