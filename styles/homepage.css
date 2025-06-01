@@ -24,6 +24,7 @@
   font-size: 1em;
   flex: 1;
   min-width: 180px;
+  border-radius: 0px;
 }
 
 .input:focus {
