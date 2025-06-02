@@ -29,8 +29,7 @@ async function getArchiveLink(url) {
   // Otherwise, scrape it
   const context = await browser.createBrowserContext();
   const page = (await context.pages())?.[0] || await context.newPage();
-  await page.goto(`https://archive.ph/${url}`, { waitUntil: 'networkidle2' });
-  await new Promise((res) => { setTimeout(() => { res() }, 200) });
+  await page.goto(`https://archive.ph/${url}`, { waitUntil: 'domcontentloaded' });
 
   const html = await page.content();
   await context.close();
