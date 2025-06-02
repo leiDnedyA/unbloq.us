@@ -1,57 +1,15 @@
-const http = require('http');
 const url = require('url');
-const cheerio = require('cheerio');
+const http = require('http');
 const puppeteer = require('puppeteer');
 const {
   connectRedis,
   cacheSet,
   cacheGet
 } = require('./src/cache.js');
+const parsing = require('./src/parsing.js');
+const { getArchiveLinkFromHtml } = parsing;
 
-async function getArchiveLinkFromHtml(html, originalUrl) {
-  if (html.includes('No results') || !originalUrl) {
-    return null;
-  }
-
-  const $ = cheerio.load(html);
-
-  let archiveLink;
-
-  if (!archiveLink) {
-    const anchorsWithSingleImg = $('a').filter(function() {
-      const children = $(this).children();
-      for (let i = 0; i < children.length; i++) {
-        if (children.get(i)?.tagName === 'img') {
-          return true;
-        }
-      }
-      return false;
-    });
-    const hrefs = anchorsWithSingleImg
-      .map((_, el) => $(el).attr('href'))
-      .get();
-
-    archiveLink = hrefs?.[0];
-  }
-
-  if (!archiveLink) {
-    // if the page title doesn't exist or can't be found, fallback like this
-    const hrefs = $('a')
-      .map((_, el) => $(el).attr('href'))
-      .get();
-
-    const archiveLinkIndex = hrefs
-      .findLastIndex((href) => href && href.includes(originalUrl)) - 1;
-
-    archiveLink = archiveLinkIndex > 0 && hrefs[archiveLinkIndex];
-  }
-
-  return archiveLink;
-}
-
-function buildArchiveSubmissionLink(url) {
-  return `https://archive.ph/submit/?url=${encodeURIComponent(url)}`;
-}
+let browser = null;
 
 async function getArchiveLink(url) {
   if (!url) return null;
@@ -69,24 +27,12 @@ async function getArchiveLink(url) {
   }
 
   // Otherwise, scrape it
-  const viewport = {
-    deviceScaleFactor: 1,
-    hasTouch: false,
-    height: 1080,
-    isLandscape: true,
-    isMobile: false,
-    width: 1920,
-  };
-  const browser = await puppeteer.launch({
-    defaultViewport: viewport,
-    headless: false,
-  });
-  const page = (await browser.pages())?.[0] || await browser.newPage();
-  await page.goto(`https://archive.ph/${url}`, { waitUntil: 'networkidle2' });
-  await new Promise((res) => { setTimeout(() => { res() }, 200) });
+  const context = await browser.createBrowserContext();
+  const page = (await context.pages())?.[0] || await context.newPage();
+  await page.goto(`https://archive.ph/${url}`, { waitUntil: 'domcontentloaded' });
 
   const html = await page.content();
-  await browser.close();
+  await context.close();
 
   const archiveLink = await getArchiveLinkFromHtml(html, url);
 
@@ -119,7 +65,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url: archiveLink }));
     } else {
-      const submissionLink = buildArchiveSubmissionLink(targetUrl);
+      const submissionLink = `https://archive.ph/submit/?url=${encodeURIComponent(url)}`;
       console.log(` - generating archive: ${submissionLink}`);
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url: submissionLink }));
@@ -133,8 +79,36 @@ const server = http.createServer(async (req, res) => {
 
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`Server running at http://localhost:${PORT}/archive?url=<your-url>`);
+
+  const viewport = {
+    deviceScaleFactor: 1,
+    hasTouch: false,
+    height: 1080,
+    isLandscape: true,
+    isMobile: false,
+    width: 1920,
+  };
+  browser = await puppeteer.launch({
+    defaultViewport: viewport,
+    headless: false,
+  });
+
+  // based on https://stackoverflow.com/questions/14031763/doing-a-cleanup-action-just-before-node-js-exits
+  async function exitHandler(_, exitCode) {
+    browser.close().then(() => { process.exit(exitCode) });
+  }
+
+  // do something when app is closing
+  process.on('exit', exitHandler.bind(null, { cleanup: true }));
+  // catches ctrl+c event
+  process.on('SIGINT', exitHandler.bind(null, { exit: true }));
+  // catches "kill pid" (for example: nodemon restart)
+  process.on('SIGUSR1', exitHandler.bind(null, { exit: true }));
+  process.on('SIGUSR2', exitHandler.bind(null, { exit: true }));
+  // catches uncaught exceptions
+  process.on('uncaughtException', exitHandler.bind(null, { exit: true }));
 });
 
 // Tests
