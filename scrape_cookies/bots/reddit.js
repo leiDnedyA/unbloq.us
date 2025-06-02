@@ -23,6 +23,18 @@ const siteQueryFilter = (sites) => {
   return sites.map(site => `site:${site}`).join('+OR+')
 }
 
+function extractBreakMinutes(input) {
+  const regex = /Take a break for\s+(\d+)\s+minutes before trying again\./;
+  const match = input.match(regex);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+
+function extractBreakSeconds(input) {
+  const regex = /Take a break for\s+(\d+)\s+seconds before trying again\./;
+  const match = input.match(regex);
+  return match ? parseInt(match[1], 10) : null;
+}
 
 const sweepRedditHomepage = async () => {
   const SEARCH_URL = `https://old.reddit.com/search?q=(${siteQueryFilter(targetSites)
@@ -128,17 +140,38 @@ tip: put "unbloq.us/" before any link to jump to an archive of it`;
       // Submit the comment
       await Promise.all([
         postPage.click('form.usertext button[type="submit"]'),
-        await new Promise((res) => { setTimeout(() => { res() }, 200) })
+        await new Promise((res) => { setTimeout(() => { res() }, 500) })
       ]);
 
-      console.log('→ Comment posted successfully.');
+      console.log('→ Comment posted... Checking for rate limit');
+
+      // Delay to see possible rate limit message
+      await new Promise((res) => { setTimeout(() => { res() }, 1_000) })
+
+      const htmlAfterCommenting = await postPage.content();
+      const rateLimitMinutes = extractBreakMinutes(htmlAfterCommenting);
+      const rateLimitSeconds = extractBreakSeconds(htmlAfterCommenting);
+      if (rateLimitMinutes) {
+        console.log(`Warning! Rate limit hit--- waiting ${rateLimitMinutes} minutes before continuing`);
+        await new Promise(res => {
+          setTimeout(() => { res() }, rateLimitMinutes * 60 * 1_000 + 500);
+        })
+      } else if (rateLimitSeconds) {
+        console.log(`Warning! Rate limit hit--- waiting ${rateLimitSeconds} seconds before continuing`);
+      }
+      console.log('✅ Comment posted successfully!')
+
+      // Submit the comment
+      await Promise.all([
+        postPage.click('form.usertext button[type="submit"]'),
+        await new Promise((res) => { setTimeout(() => { res() }, 500) })
+      ]);
 
       // Close this post tab before moving on
       await postPage.close();
 
-      // Small delay between actions to avoid being rate-limited
-      await new Promise((res) => { setTimeout(() => { res() }, 200) })
-
+      // Wait 30 seconds between articles
+      await new Promise((res) => { setTimeout(() => { res() }, 30 * 1_000) })
     } catch (err) {
       console.warn(`⚠️  Skipped post ${postUrl} due to error: ${err.message}`);
       // Close the post tab if it was opened
@@ -155,10 +188,16 @@ tip: put "unbloq.us/" before any link to jump to an archive of it`;
 
 };
 
-sweepRedditHomepage();
-
-if (sort === 'new') {
-  setInterval(sweepRedditHomepage,
-    5 * 60 * 1_000 // every 2 minutes
-  );
-}
+(async () => {
+  await sweepRedditHomepage();
+  while (sort === 'new' && true) {
+    // 5 minutes between sweeps
+    const delayMillis = 5 * 60 * 1_000;
+    await new Promise((res) => {
+      setTimeout(() => { res() },
+        delayMillis
+      )
+    });
+    await sweepRedditHomepage();
+  }
+})();
