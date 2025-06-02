@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const { createClient } = require('redis');
 
 const sort = process.argv.includes('top') ? 'top' : 'new';
 const USERNAME = process.argv?.[2];
@@ -15,13 +16,13 @@ const targetSites = [
   'theguardian.com',
   'telegraph.co.uk',
   'latimes.com',
-]
+];
 
 // Example:
 // site:theatlantic.com+OR+site:washingtonpost.com+OR+site:nytimes.com+OR+site:chronicle.com+OR+site:wired.com
 const siteQueryFilter = (sites) => {
-  return sites.map(site => `site:${site}`).join('+OR+')
-}
+  return sites.map(site => `site:${site}`).join('+OR+');
+};
 
 function extractBreakMinutes(input) {
   const regex = /Take a break for\s+(\d+)\s+minutes before trying again\./;
@@ -29,175 +30,177 @@ function extractBreakMinutes(input) {
   return match ? parseInt(match[1], 10) : null;
 }
 
-
 function extractBreakSeconds(input) {
   const regex = /Take a break for\s+(\d+)\s+seconds before trying again\./;
   const match = input.match(regex);
   return match ? parseInt(match[1], 10) : null;
 }
 
-const sweepRedditHomepage = async () => {
-  const SEARCH_URL = `https://old.reddit.com/search?q=(${siteQueryFilter(targetSites)
-    })&restrict_sr=off&sort=${sort
-    }&t=month`;
-
-  const browser = await puppeteer.launch({
-    args: [
-      '--incognito'
-    ],
-    executablePath: '/usr/bin/google-chrome',
-    headless: false,
-    defaultViewport: null
+(async () => {
+  // === A. SET UP REDIS CLIENT ===
+  const redis = createClient({
+    url: 'redis://localhost:6379',
   });
-  const page = await browser.newPage();
 
-  await page.goto('https://old.reddit.com/login', { waitUntil: 'networkidle2' });
+  redis.on('error', (err) => console.error('Redis Client Error', err));
+  await redis.connect();
+  console.log('✅ Connected to Redis');
 
-  await page.waitForSelector('faceplate-text-input');
-  const hosts = await page.$$('faceplate-text-input');
+  // === B. DEFINE SWEEP FUNCTION ===
+  const sweepRedditHomepage = async () => {
+    const SEARCH_URL = `https://old.reddit.com/search?q=(${siteQueryFilter(targetSites)
+      })&restrict_sr=off&sort=${sort
+      }&t=month`;
 
-  const usernameHandle = await hosts[0].evaluateHandle(el => el.shadowRoot.querySelector('input'));
-  const passwordHandle = await hosts[1].evaluateHandle(el => el.shadowRoot.querySelector('input'));
+    const browser = await puppeteer.launch({
+      args: ['--incognito'],
+      executablePath: '/usr/bin/google-chrome',
+      headless: false,
+      defaultViewport: null,
+    });
+    const page = await browser.newPage();
 
-  const usernameInput = usernameHandle.asElement();
-  const passwordInput = passwordHandle.asElement();
+    // === B.1. LOGIN ===
+    await page.goto('https://old.reddit.com/login', { waitUntil: 'networkidle2' });
+    await page.waitForSelector('faceplate-text-input');
 
-  await usernameInput.type(USERNAME, { delay: 30 });
-  await passwordInput.type(PASSWORD, { delay: 30 });
+    const hosts = await page.$$('faceplate-text-input');
+    const usernameHandle = await hosts[0].evaluateHandle(el => el.shadowRoot.querySelector('input'));
+    const passwordHandle = await hosts[1].evaluateHandle(el => el.shadowRoot.querySelector('input'));
 
-  await new Promise(res => { setTimeout(() => { res() }, 500) });
+    const usernameInput = usernameHandle.asElement();
+    const passwordInput = passwordHandle.asElement();
+    await usernameInput.type(USERNAME, { delay: 30 });
+    await passwordInput.type(PASSWORD, { delay: 30 });
 
-  const submitButtonHost = await page.$$('faceplate-tracker');
-  const submitButton = await submitButtonHost[2].evaluateHandle(el => el.firstElementChild);
+    // small delay before clicking “Log In”
+    await new Promise(res => setTimeout(res, 500));
 
-  await Promise.all([
-    submitButton.click(),
-    page.waitForNavigation({ waitUntil: 'networkidle2' }),
-  ]);
+    const submitButtonHost = await page.$$('faceplate-tracker');
+    const submitButton = await submitButtonHost[2].evaluateHandle(el => el.firstElementChild);
 
-  // === 2. NAVIGATE TO SEARCH RESULTS ===
-  await page.goto(SEARCH_URL, { waitUntil: 'networkidle2' });
-  console.log('Navigated to search results.');
+    await Promise.all([
+      submitButton.click(),
+      page.waitForNavigation({ waitUntil: 'networkidle2' }),
+    ]);
+    console.log('✅ Logged in to Reddit');
 
-  // Wait for search results to load. On old Reddit, each post is within a .search-result-link element.
-  await page.waitForSelector('.search-result-link');
+    // === B.2. NAVIGATE TO SEARCH ===
+    await page.goto(SEARCH_URL, { waitUntil: 'networkidle2' });
+    console.log('Navigated to search results.');
 
-  // Extract the URLs of each post on the first page of results
-  const postLinks = await page.$$eval('.search-result-link > a.thumbnail', anchors =>
-    anchors.map(a => a.href).filter(href => href.includes('/r/'))
-  );
-  console.log(`Found ${postLinks.length} posts on the first search results page.`);
+    // Wait for search results to load. On old Reddit, each post is within a .search-result-link element.
+    await page.waitForSelector('.search-result-link');
 
-  // === 3. ITERATE THROUGH EACH POST ===
-  for (const postUrl of postLinks) {
-    try {
-      console.log(`\nProcessing post: ${postUrl}`);
+    // Extract post URLs on first page
+    const postLinks = await page.$$eval('.search-result-link > a.thumbnail', anchors =>
+      anchors.map(a => a.href).filter(href => href.includes('/r/'))
+    );
+    console.log(`Found ${postLinks.length} posts on the first search results page.`);
 
-      // Open the post in a new tab to avoid losing the search results page
-      const postPage = await browser.newPage();
-      await postPage.setViewport({ width: 1280, height: 800 });
-      await postPage.goto(postUrl, { waitUntil: 'networkidle2' });
+    // === B.3. PROCESS EACH POST ===
+    for (const postUrl of postLinks) {
+      try {
+        console.log(`\n🔄 Checking thread: ${postUrl}`);
 
-      const html = await postPage.content();
-      if (html.includes('unbloq.us')) {
-        console.log('✅ Skipping post because a comment already includes unbloq.us');
-        await postPage.close();
-        continue;
-      }
+        // --- B.3.a. CHECK REDIS IF ALREADY PROCESSED ---
+        const already = await redis.sIsMember('processedThreads', postUrl);
+        if (already) {
+          console.log('⏭️  Already processed (in Redis). Skipping.');
+          continue;
+        }
+        // Record in Redis that this thread has been “seen” (so we don’t do it again)
+        await redis.sAdd('processedThreads', postUrl);
 
-      // Wait for the post's outbound link to load
-      await postPage.waitForSelector('a.outbound', { timeout: 5000 });
+        // --- B.3.b. OPEN THREAD PAGE ---
+        const postPage = await browser.newPage();
+        await postPage.setViewport({ width: 1280, height: 800 });
+        await postPage.goto(postUrl, { waitUntil: 'networkidle2' });
 
-      // Extract the href of the outbound link
-      const outboundHref = await postPage.$eval('a.outbound', el => el.href);
-      console.log(`→ Found outbound link: ${outboundHref}`);
+        // Check if any existing comment (or post body) already has “unbloq.us”
+        const html = await postPage.content();
+        if (html.includes('unbloq.us')) {
+          console.log('✅ Skipping because thread already contains unbloq.us');
+          await postPage.close();
+          continue;
+        }
 
-      const linkWithoutQueryParams = outboundHref?.split('?')?.[0];
+        // --- B.3.c. EXTRACT OUTBOUND LINK ---
+        await postPage.waitForSelector('a.outbound', { timeout: 5000 });
+        const outboundHref = await postPage.$eval('a.outbound', el => el.href);
+        console.log(`→ Found outbound link: ${outboundHref}`);
+        const linkWithoutQueryParams = outboundHref.split('?')[0];
+        const unbloqUrl = `https://unbloq.us/${linkWithoutQueryParams}`;
 
-      // Construct the unbloq.us URL
-      const unbloqUrl = `https://unbloq.us/${linkWithoutQueryParams}`;
+        console.log(`→ Visiting archive URL: ${unbloqUrl}`);
+        const archivePage = await browser.newPage();
+        await archivePage.goto(unbloqUrl, { waitUntil: 'networkidle2' });
+        await archivePage.close();
 
-      console.log(`→ Visiting ${unbloqUrl} to ensure archive is loaded`);
-      const archivePage = await browser.newPage();
-      await archivePage.goto(unbloqUrl, { waitUntil: 'networkidle2' });
-      await archivePage.close();
+        console.log(`→ Preparing to post comment with: ${unbloqUrl}`);
+        await postPage.waitForSelector('textarea[name="text"]', { timeout: 5000 });
+        await postPage.click('textarea[name="text"]');
 
-      console.log(`→ Will post comment with: ${unbloqUrl}`);
-
-      // === 4. LEAVE A COMMENT WITH THE UNBLOQ.US LINK ===
-      // Wait for the comment textarea to appear
-      await postPage.waitForSelector('textarea[name="text"]', { timeout: 5000 });
-
-      // Click into the textarea to focus
-      await postPage.click('textarea[name="text"]');
-
-      // Type our comment
-      const commentText = `${unbloqUrl}
+        const commentText = `${unbloqUrl}
 
 tip: put "unbloq.us/" before any link to jump to an archive of it`;
-      await postPage.type('textarea[name="text"]', commentText, { delay: 20 });
+        await postPage.type('textarea[name="text"]', commentText, { delay: 20 });
 
-      // Submit the comment
-      await Promise.all([
-        postPage.click('form.usertext button[type="submit"]'),
-        await new Promise((res) => { setTimeout(() => { res() }, 500) })
-      ]);
+        // Submit the comment
+        await Promise.all([
+          postPage.click('form.usertext button[type="submit"]'),
+          new Promise(res => setTimeout(res, 500)),
+        ]);
+        console.log('→ Comment submitted...');
 
-      console.log('→ Comment posted... Checking for rate limit');
+        // Wait briefly to check for rate limits
+        await new Promise(res => setTimeout(res, 1000));
+        const htmlAfter = await postPage.content();
+        const rateLimitMinutes = extractBreakMinutes(htmlAfter);
+        const rateLimitSeconds = extractBreakSeconds(htmlAfter);
+        if (rateLimitMinutes) {
+          console.log(`⚠️ Rate limit hit: waiting ${rateLimitMinutes} minutes...`);
+          await new Promise(res => setTimeout(res, rateLimitMinutes * 60 * 1000 + 500));
+        } else if (rateLimitSeconds) {
+          console.log(`⚠️ Rate limit hit: waiting ${rateLimitSeconds} seconds...`);
+          await new Promise(res => setTimeout(res, rateLimitSeconds * 1000 + 500));
+        }
 
-      // Delay to see possible rate limit message
-      await new Promise((res) => { setTimeout(() => { res() }, 1_000) })
+        console.log('✅ Comment posted successfully!');
 
-      const htmlAfterCommenting = await postPage.content();
-      const rateLimitMinutes = extractBreakMinutes(htmlAfterCommenting);
-      const rateLimitSeconds = extractBreakSeconds(htmlAfterCommenting);
-      if (rateLimitMinutes) {
-        console.log(`Warning! Rate limit hit--- waiting ${rateLimitMinutes} minutes before continuing`);
-        await new Promise(res => {
-          setTimeout(() => { res() }, rateLimitMinutes * 60 * 1_000 + 500);
-        })
-      } else if (rateLimitSeconds) {
-        console.log(`Warning! Rate limit hit--- waiting ${rateLimitSeconds} seconds before continuing`);
+        // MARK THIS THREAD AS PROCESSED in Redis
+        await redis.sAdd('processedThreads', postUrl);
+
+        // Close this thread’s tab, then pause before next one
+        await postPage.close();
+        await new Promise(res => setTimeout(res, 30 * 1000));
+      } catch (err) {
+        console.warn(`⚠️  Skipped ${postUrl} due to error: ${err.message}`);
+        // If a new page was opened, close it
+        const pages = await browser.pages();
+        if (pages.length > 1) {
+          await pages[pages.length - 1].close();
+        }
+        continue;
       }
-      console.log('✅ Comment posted successfully!')
-
-      // Submit the comment
-      await Promise.all([
-        postPage.click('form.usertext button[type="submit"]'),
-        await new Promise((res) => { setTimeout(() => { res() }, 500) })
-      ]);
-
-      // Close this post tab before moving on
-      await postPage.close();
-
-      // Wait 30 seconds between articles
-      await new Promise((res) => { setTimeout(() => { res() }, 30 * 1_000) })
-    } catch (err) {
-      console.warn(`⚠️  Skipped post ${postUrl} due to error: ${err.message}`);
-      // Close the post tab if it was opened
-      const pages = await browser.pages();
-      if (pages.length > 1) {
-        await pages[pages.length - 1].close();
-      }
-      continue;
     }
-  }
 
-  console.log('\nAll done. Closing browser.');
-  await browser.close();
+    console.log('\nAll done with this sweep. Closing browser.');
+    await browser.close();
+  };
 
-};
-
-(async () => {
+  // === C. RUN THE SWEEPER, THEN REPEAT IF “new” SORT ===
   await sweepRedditHomepage();
-  while (sort === 'new' && true) {
-    // 5 minutes between sweeps
-    const delayMillis = 5 * 60 * 1_000;
-    await new Promise((res) => {
-      setTimeout(() => { res() },
-        delayMillis
-      )
-    });
-    await sweepRedditHomepage();
+
+  if (sort === 'new') {
+    while (true) {
+      console.log('⏰ Waiting 5 minutes before next sweep...');
+      await new Promise(res => setTimeout(res, 5 * 60 * 1000));
+      await sweepRedditHomepage();
+    }
+  } else {
+    // if sort === 'top', just exit
+    await redis.disconnect();
+    console.log('✅ Disconnected from Redis. Exiting.');
   }
 })();
