@@ -65,7 +65,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url: archiveLink }));
     } else {
-      const submissionLink = `https://archive.ph/submit/?url=${encodeURIComponent(url)}`;
+      const submissionLink = `https://archive.ph/submit/?url=${encodeURIComponent(targetUrl)}`;
       console.log(` - generating archive: ${submissionLink}`);
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ url: submissionLink }));
