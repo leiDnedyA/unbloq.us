@@ -14,6 +14,7 @@ const targetSites = [
   'economist.com',
   'theguardian.com',
   'telegraph.co.uk',
+  'latimes.com',
 ]
 
 // Example:
