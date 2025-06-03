@@ -1,3 +1,4 @@
+import TwitterVideo from '@/components/TwitterVideo';
 import { GetServerSideProps } from 'next';
 import { FormEventHandler, useEffect, useRef, useState } from 'react';
 
@@ -123,7 +124,7 @@ export default function HomePage({ error, targetUrl }: { error?: string, targetU
   const [windowRef, setWindowRef] = useState<Window | null>(null);
   useEffect(() => {
     setWindowRef(window);
-  });
+  }, []);
   if (error) {
     return (
       <div>
@@ -142,11 +143,17 @@ export default function HomePage({ error, targetUrl }: { error?: string, targetU
   }
   return <div style={{ fontFamily: 'sans-serif' }}>
     <h1>unbloq.us</h1>
+
+    <div style={{ width: '100%', display: 'flex', justifyContent: 'center' }}>
+      <TwitterVideo />
+    </div>
+
     <p>
       A tiny wrapper around <a href="https://archive.today/">https://archive.today/</a> {' '}
       to automatically jump to or create an archive of any webpage!
     </p>
     <GotoArchiveForm />
-    <p>Give the project a star or make a contribution <a href={process.env.GITHUB_URL}>on GitHub</a>!</p>
+    <script async src="https://platform.twitter.com/widgets.js" charSet="utf-8"></script>
+    <p>Check it out <a href={process.env.GITHUB_URL}>on GitHub</a>!</p>
   </div>
 }

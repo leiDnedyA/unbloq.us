@@ -73,6 +73,7 @@ function MyApp({ Component, pageProps }: AppProps) {
       <Head>
         <title>unbloq.us</title>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <script async src="https://platform.twitter.com/widgets.js" charSet="utf-8"></script>
       </Head>
       <div className="container">
         <Component {...pageProps} />
