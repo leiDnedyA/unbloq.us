@@ -17,6 +17,11 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
     return { props: {} };
   }
 
+  // If it's just the home route with query params, don't redirect
+  if (resolvedUrl.startsWith('?') || resolvedUrl.startsWith('/?')) {
+    return { props: {} }
+  }
+
   if (resolvedUrl.includes('error.com')) {
     return {
       props: {
